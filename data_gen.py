@@ -3,27 +3,37 @@ import random
 from datetime import datetime
 
 def generate_live_signals():
-    # 1. Simulate Merchant Migration Status
-    # Some are on the old 'Hosted' system, some on the new 'Headless' one.
     merchants = [
-        {"id": 101, "name": "GlobalShop", "stage": "Headless", "progress": 100},
-        {"id": 102, "name": "TechFlow", "stage": "Hosted", "progress": 0},
-        {"id": 103, "name": "QuickCart", "stage": "Headless", "progress": 45} # In the middle of moving!
+        {"id": 103, "name": "Global-Shop", "stage": "Headless", "tier": "Enterprise"},
+        {"id": 205, "name": "Quick-Cart", "stage": "Hosted", "tier": "Basic"}
     ]
     
-    # 2. Simulate System Logs (The 'Invisible' Errors)
-    # We'll create a "Migration Error" pattern here.
-    logs = [
-        {"timestamp": str(datetime.now()), "merchant_id": 103, "level": "ERROR", "event": "Webhook_Signature_Mismatch"},
-        {"timestamp": str(datetime.now()), "merchant_id": 101, "level": "INFO", "event": "Successful_Checkout"}
-    ]
-    
-    # 3. Simulate Incoming Support Tickets (The 'Human' Signals)
+    # These represent the 'Next Up' queue
     tickets = [
-        {"id": "TKT-501", "merchant_id": 103, "text": "Help! My checkout is failing after I updated to the new API.", "priority": "High"}
+        {
+            "id": "T-001",
+            "merchant_id": 103,
+            "issue": "Webhook_Signature_Mismatch",
+            "risk_score": 20, # Low
+            "desc": "Orders are not appearing in my custom storefront dashboard."
+        },
+        {
+            "id": "T-002",
+            "merchant_id": 205,
+            "issue": "Server_500_Timeout",
+            "risk_score": 50, # Medium
+            "desc": "I am getting a timeout error when trying to export my product CSV."
+        },
+        {
+            "id": "T-003",
+            "merchant_id": 103,
+            "issue": "Critical_Database_Corruption",
+            "risk_score": 90, # High
+            "desc": "URGENT: Database sync failed, customer records are showing garbled text!"
+        }
     ]
     
-    return merchants, logs, tickets
+    return merchants, tickets
 
 # Test function
 if __name__ == "__main__":

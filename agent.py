@@ -1,6 +1,5 @@
 import os
 from typing import Annotated, TypedDict
-from langchain_openai import ChatOpenAI # Meta uses OpenAI-compatible format
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from dotenv import load_dotenv
@@ -9,92 +8,127 @@ from langchain_groq import ChatGroq
 
 load_dotenv()
 
-# Define the State
+# --- 1. DEFINE THE STATE ---
 class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
     migration_status: str 
     last_error: str
     confidence: int
+    risk_level: str   # Added for Triage
+    action_type: str  # Added for Triage
 
-# Initialize Official Llama API
-# We use ChatOpenAI but change the 'base_url' to Meta's endpoint
+# Initialize Groq Llama 3
 llm = ChatGroq(
     model="llama-3.3-70b-versatile",
     groq_api_key=os.getenv("GROQ_API_KEY")
 )
 
 # --- NODE 1: ANALYZE ---
+import re
+
 def analyze_issue(state: AgentState):
     prompt = f"""
-    You are an AI Support Engineer for a SaaS platform.
+    You are a Senior 'Self-Healing' Support Engineer. 
     
-    SYSTEM CONTEXT:
-    - Migration Stage: {state['migration_status']}
-    - Error Signal: {state['last_error']}
+    --- RAW INVESTIGATION DATA ---
+    MERCHANT CONTEXT: {state['migration_status']}
+    TECHNICAL ERROR: {state['last_error']}
     
-    TASK:
-    Analyze if the merchant's issue is a result of the Hosted-to-Headless migration.
-    Provide a clear reasoning for the support team.
+    --- YOUR MISSION ---
+    1. DIAGNOSE: Compare the merchant's status with the error. 
+    2. CLASSIFY: Is this a 'Migration Gap' (Headless move) or 'Legacy Platform' issue?
+    3. ASSESS CONFIDENCE: Based on the alignment of the Merchant Status and the Technical Error, how certain are you of this diagnosis? 
+       - If they match perfectly (e.g., Headless + Webhook Mismatch), confidence is 95-99%.
+       - If it's a generic error (e.g., Server Timeout), confidence is 80-85%.
+       - If the signals are contradictory, confidence is below 70%.
+
+    --- OUTPUT FORMAT ---
+    You must end your response with: "CONFIDENCE_SCORE: X" (where X is a number).
+    
+    --- STYLE ---
+    - Use 'Based on the pattern of...'
+    - Be professional and direct.
     """
+    
     response = llm.invoke(state['messages'] + [("system", prompt)])
-    return {"messages": [response], "confidence": 95}
+    content = response.content
 
-# --- NODE 2: ACT ---
-def execute_action(state: AgentState):
-    return {"messages": [("assistant", "ACTION: Recommending immediate rollback of API keys and alerting the migration team.")]}
-
-def verify_fix(state: AgentState):
-    """
-    The Learning Phase: Did the action actually fix the problem?
-    """
-    # Simulate a post-action observation
-    # In a real app, you would re-run generate_live_signals() here
-    success = False # Let's simulate a failure to show the rollback!
+    # Extract the number from the LLM's text using regex
+    # If it fails to find a number, it defaults to 85
+    match = re.search(r"CONFIDENCE_SCORE:\s*(\d+)", content)
+    conf_score = int(match.group(1)) if match else 85
     
-    if not success:
-        return {
-            "messages": [("assistant", "⚠️ Error persists after fix. INITIATING ROLLBACK to previous configuration.")],
-            "confidence": 0
-        }
+    # Clean up the message so the "CONFIDENCE_SCORE: X" doesn't show in the UI
+    clean_content = re.sub(r"CONFIDENCE_SCORE:\s*\d+", "", content).strip()
+    response.content = clean_content
+
+    return {"messages": [response], "confidence": conf_score}
+
+# --- NODE 2: ACT (Risk-Based Triage) ---
+def execute_action(state: AgentState):
+    last_error = state.get('last_error', 'Unknown')
+    
+    # Logic-based Triage mapping to your specific UI requirements
+    if "Mismatch" in last_error or "Signature" in last_error:
+        risk = "Low"
+        message = "A minor configuration issue was detected and resolved automatically. Your migration continues as expected."
+        action_type = "AUTO_FIX"
+    elif "Timeout" in last_error:
+        risk = "Medium"
+        message = "We’re experiencing a temporary delay due to a third-party system. No action is required from you."
+        action_type = "DELAY_NOTICE"
     else:
-        return {"messages": [("assistant", "✅ Fix verified. System stable. Learning: This solution works for Webhook mismatches.")]}
+        risk = "High"
+        message = "We detected an issue that may affect data integrity. Our engineers are actively investigating."
+        action_type = "HUMAN_APPROVAL_REQUIRED"
+
+    return {
+        "messages": [("assistant", message)], 
+        "risk_level": risk,
+        "action_type": action_type
+    }
+
+# --- NODE 3: VERIFY ---
+def verify_fix(state: AgentState):
+    # For demo purposes, we simulate success for Low/Medium, and pause for High
+    risk = state.get('risk_level', 'Low')
+    if risk == "High":
+        return {"messages": [("assistant", "⚠️ System paused. Awaiting manual override for data safety.")]}
+    
+    return {"messages": [("assistant", "✅ Fix verified. System heartbeat stable.")]}
 
 # --- BUILD THE GRAPH ---
 builder = StateGraph(AgentState)
 builder.add_node("analyzer", analyze_issue)
 builder.add_node("actor", execute_action)
-builder.add_node("verifier", verify_fix) # New Node
+builder.add_node("verifier", verify_fix)
 
 builder.add_edge(START, "analyzer")
 builder.add_edge("analyzer", "actor")
-builder.add_edge("actor", "verifier") # Check after acting
+builder.add_edge("actor", "verifier")
 builder.add_edge("verifier", END)
 
 agent_app = builder.compile()
 
-
-# --- RUN THE CYCLE ---
+# --- RUN THE CYCLE (For Terminal Testing) ---
 def run_agent_cycle():
-    # Observe
-    merchants, logs, tickets = generate_live_signals()
-    problem_log = logs[0] 
-    merchant_info = next(m for m in merchants if m['id'] == problem_log['merchant_id'])
+    merchants, tickets = generate_live_signals()
+    # Simulate first ticket
+    tkt = tickets[0]
     
-    # Ingest
     initial_state = {
-        "messages": [("user", f"Ticket: {tickets[0]['text']}")],
-        "migration_status": merchant_info['stage'], 
-        "last_error": problem_log['event'],        
+        "messages": [("user", tkt['desc'])],
+        "migration_status": "Headless", 
+        "last_error": tkt['issue'],        
         "confidence": 0 
     }
 
-    print(f"--- [OBSERVE] Analyzing {merchant_info['name']} via Official Llama API ---")
-    
-    # Reason & Act
+    print(f"--- [OBSERVE] Analyzing Issue: {tkt['issue']} ---")
     final_state = agent_app.invoke(initial_state)
     
-    print(f"\n--- LLAMA'S REASONING ---\n{final_state['messages'][-2].content}")
-    print(f"\n--- DECISION ---\n{final_state['messages'][-1].content}")
+    print(f"\n--- REASONING ---\n{final_state['messages'][-3].content}")
+    print(f"\n--- TRIAGE ---\nRisk: {final_state['risk_level']}")
+    print(f"\n--- FINAL MESSAGE ---\n{final_state['messages'][-2].content}")
 
 if __name__ == "__main__":
     run_agent_cycle()
