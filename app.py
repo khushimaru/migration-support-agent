@@ -10,7 +10,7 @@ from data_gen import generate_live_signals
 st.set_page_config(
     page_title="AEGIS: Migration Guard",
     layout="wide",
-    page_icon="🛡️"
+    page_icon="red.svg"
 )
 
 # =========================================================
@@ -23,32 +23,27 @@ html, body, [class*="css"] {
     color: #e6e6e6;
     font-family: Inter, system-ui, sans-serif;
 }
-
 .block-container {
     padding-top: 1.5rem;
     padding-bottom: 2rem;
 }
-
 h1, h2, h3, h4 {
     color: #f5f5f5;
     font-weight: 600;
 }
-
 /* Tabs */
 .stTabs [data-baseweb="tab"] {
     background-color: #0f1218;
     color: #b5b5b5;
-    border-radius: 10px;
+    border-radius: 0px;
     padding: 10px 18px;
     border: 1px solid #1f2430;
 }
-
 .stTabs [aria-selected="true"] {
     background-color: rgba(225, 6, 0, 0.15);
     color: #ffffff;
     border: 1px solid #e10600;
 }
-
 /* Buttons */
 .stButton > button {
     background: linear-gradient(135deg, #e10600, #9b1c1c);
@@ -58,25 +53,21 @@ h1, h2, h3, h4 {
     padding: 0.65rem 1.3rem;
     font-weight: 600;
 }
-
 .stButton > button:hover {
     background: linear-gradient(135deg, #ff2a2a, #b32020);
     transform: translateY(-1px);
 }
-
 /* Panels */
 .stMarkdown, .stJson {
     background-color: #12151b;
     border: 1px solid #1f2430;
     border-radius: 12px;
 }
-
 /* Alerts */
 .stAlert {
     background-color: #12151b;
     border-left: 6px solid #e10600;
 }
-
 hr {
     border-color: #1f2430;
 }
@@ -90,6 +81,9 @@ if "ticket_queue" not in st.session_state:
     merchants, raw_tickets = generate_live_signals()
     st.session_state.ticket_queue = raw_tickets.copy()
     st.session_state.merchants = merchants
+
+if "war_room_queue" not in st.session_state:
+    st.session_state.war_room_queue = [] # Queue for pending High Risk approvals
 
 if "metrics" not in st.session_state:
     st.session_state.metrics = {
@@ -106,20 +100,22 @@ if "history_log" not in st.session_state:
 # HEADER
 # =========================================================
 st.markdown("""
+            <div style="padding: 5px 0px 10px 10px;">
 <h1 style="letter-spacing:1px;">
 <span style="color:#e10600;">AEGIS</span> Migration Guard
 </h1>
 <p style="color:#888; margin-top:-10px;">
 Autonomous Support & Self-Healing Infrastructure for SaaS Platforms
-</p>
+</p></div>
 """, unsafe_allow_html=True)
 
 # =========================================================
 # TABS
 # =========================================================
-tab_metrics, tab_investigation, tab_audit = st.tabs([
+tab_metrics, tab_investigation, tab_war_room, tab_audit = st.tabs([
     "Executive Summary",
     "Live Investigation",
+    "Approvals",
     "System Audit"
 ])
 
@@ -153,15 +149,15 @@ with tab_metrics:
     c1, c2, c3, c4 = st.columns(4)
 
     with c1:
-        st.markdown(metric_card("Low Risk", st.session_state.metrics["Low"], "#2ecc71"), unsafe_allow_html=True)
+        st.markdown(metric_card("Low Risk Resolved", st.session_state.metrics["Low"], "#2ecc71"), unsafe_allow_html=True)
     with c2:
-        st.markdown(metric_card("Medium Risk", st.session_state.metrics["Medium"], "#f39c12"), unsafe_allow_html=True)
+        st.markdown(metric_card("Medium Risk Resolved", st.session_state.metrics["Medium"], "#f39c12"), unsafe_allow_html=True)
     with c3:
-        st.markdown(metric_card("High Risk", st.session_state.metrics["High"], "#e10600"), unsafe_allow_html=True)
+        st.markdown(metric_card("High Risk Resolved", st.session_state.metrics["High"], "#e10600"), unsafe_allow_html=True)
     with c4:
         st.markdown(metric_card(
-            "Merchants Affected",
-            len(st.session_state.metrics["Affected_Merchants"]),
+            "Pending Approvals",
+            len(st.session_state.war_room_queue),
             "#ff3b3b"
         ), unsafe_allow_html=True)
 
@@ -171,16 +167,28 @@ with tab_metrics:
 with tab_investigation:
     if st.session_state.ticket_queue:
         current_ticket = st.session_state.ticket_queue[0]
-        st.info(f"**Active Signal:** Investigating Incident `{current_ticket['id']}`")
+        st.info(f"**Incoming Signal:** Ingesting Incident `{current_ticket['id']}`")
 
         left, right = st.columns(2)
 
         with left:
-            st.markdown("#### [Observe] Incoming Signal")
+            st.markdown("""
+            <div style="padding:5px 0px 10px 10px;">
+                        <h4> Incoming Signal</h4>
+            </div>
+            """,
+            unsafe_allow_html=True
+            )
             st.json(current_ticket)
 
         with right:
-            st.markdown("#### [Reason & Decide]")
+            st.markdown("""
+            <div style="padding:5px 0px 10px 10px;">
+                        <h4> Reason & Decide</h4>
+            </div>
+            """,
+            unsafe_allow_html=True
+            )
             if st.button("Invoke Agent Reasoning Engine", use_container_width=True):
                 initial_state = {
                     "messages": [("user", current_ticket.get("desc", ""))],
@@ -189,7 +197,7 @@ with tab_investigation:
                     "confidence": 0
                 }
 
-                with st.spinner("Llama 3.3 analyzing architecture & logs…"):
+                with st.spinner("Llama 3.3 analyzing architecture..."):
                     result = agent_app.invoke(initial_state)
                     st.session_state.current_result = result
                     st.session_state.current_risk = result.get("risk_level", "Low")
@@ -202,67 +210,45 @@ with tab_investigation:
 
             st.divider()
             st.markdown(f"**Agent Reasoning:** {res['messages'][-2].content}")
+            
+            # SHOWING CONFIDENCE LEVELS HERE
             st.metric("Reasoning Confidence", f"{conf}%")
             st.progress(conf / 100)
 
-            # --- PATH A: AUTONOMOUS RESOLUTION (LOW / MEDIUM) ---
+            # --- PATH A: AUTO-RESOLVE (LOW/MEDIUM) ---
             if risk in ["Low", "Medium"]:
                 st.write(f"⚙️ **Auto-Action:** System identified {risk} risk. Implementing self-healing resolution...")
                 time.sleep(2)
-                
                 st.session_state.metrics[risk] += 1
                 st.session_state.metrics["Affected_Merchants"].add(current_ticket["merchant_id"])
                 st.session_state.history_log.append({
                     "id": current_ticket["id"],
                     "issue": current_ticket["issue"],
                     "risk": risk,
-                    "action": f"Autonomous {risk}-Risk Mitigation Applied",
+                    "action": f"Autonomous {risk}-Risk Remediation",
                     "time": datetime.now().strftime("[%H:%M:%S]")
                 })
-                
                 st.session_state.ticket_queue.pop(0)
                 del st.session_state.current_result
                 st.rerun()
 
-            # --- PATH B: HUMAN-IN-THE-LOOP (HIGH RISK ONLY) ---
+            # --- PATH B: ESCALATE (HIGH RISK) ---
             else:
-                st.error("🛑 CRITICAL RISK DETECTED")
-                st.warning("Ethics Protocol: Manual confirmation required for high-impact action.")
-                
-                st.markdown("### 🛠️ High-Risk Intervention")
-                manual_col, agent_col = st.columns(2)
-                
-                with manual_col:
-                    manual_mode = st.checkbox("🚫 No, I'll solve this on my own", key=f"manual_{current_ticket['id']}")
-
-                if manual_mode:
-                    st.info("💡 **Manual Mode Active:** Agent paused for human intervention.")
-                    if st.button("✅ I have resolved this manually", type="primary", use_container_width=True):
-                        st.session_state.history_log.append({
-                            "id": current_ticket["id"],
-                            "issue": current_ticket["issue"],
-                            "risk": "High",
-                            "action": "Manual Override: Resolved by User",
-                            "time": datetime.now().strftime("[%H:%M:%S]")
-                        })
-                        st.session_state.ticket_queue.pop(0)
-                        del st.session_state.current_result
-                        st.rerun()
-                else:
-                    approve = st.checkbox("I approve the agent's proposed critical fix", key=f"approve_{current_ticket['id']}")
-                    if st.button("🚀 Approve & Execute", disabled=not approve, type="primary", use_container_width=True):
-                        st.session_state.metrics["High"] += 1
-                        st.session_state.history_log.append({
-                            "id": current_ticket["id"],
-                            "issue": current_ticket["issue"],
-                            "risk": "High",
-                            "action": "Critical Fix (Human Approved)",
-                            "time": datetime.now().strftime("[%H:%M:%S]")
-                        })
-                        st.session_state.ticket_queue.pop(0)
-                        del st.session_state.current_result
-                        st.balloons()
-                        st.rerun()
+                st.session_state.war_room_queue.append({
+                    "id": current_ticket["id"],
+                    "issue": current_ticket["issue"],
+                    "desc": current_ticket.get("desc", ""),
+                    "reasoning": result['messages'][-2].content,
+                    "confidence": conf,
+                    "merchant_id": current_ticket["merchant_id"]
+                })
+                st.session_state.ticket_queue.pop(0)
+                del st.session_state.current_result
+                st.rerun()
+        
+        pending_count = len(st.session_state.war_room_queue)
+        if pending_count > 0:
+            st.warning(f"⚠️ {pending_count} High-Risk Alert(s) detected. Waiting for manual approval. **[Go to Approvals tab]**")
     else:
         st.success("All signals clear. Passive monitoring active.")
         if st.button("Restart Simulation"):
@@ -270,7 +256,65 @@ with tab_investigation:
             st.rerun()
 
 # =========================================================
-# TAB 3 — SYSTEM AUDIT
+# TAB 3 — CRITICAL WAR ROOM (HIGH RISK ONLY)
+# =========================================================
+with tab_war_room:
+    st.subheader("🛡️ Critical Intervention Queue")
+    
+    if not st.session_state.war_room_queue:
+        st.info("No pending critical alerts. Infrastructure stable.")
+    
+    # Iterate through pending high risks
+    for i, alert in enumerate(st.session_state.war_room_queue):
+        with st.container():
+            st.markdown(f"### 🚨 {alert['id']}: {alert['issue']}")
+            
+            col_reason, col_meta = st.columns([2, 1])
+            with col_reason:
+                st.markdown(f"**Agent Reasoning:** {alert['reasoning']}")
+            with col_meta:
+                st.metric("Reasoning Confidence", f"{alert['confidence']}%")
+                st.progress(alert['confidence'] / 100)
+
+            # INTERVENTION BUTTONS
+            manual_col, agent_col = st.columns(2)
+            with manual_col:
+                # ADDED i TO KEY TO FIX DUPLICATE KEY ERROR
+                manual_mode = st.checkbox("🚫 No, I'll solve this on my own", key=f"war_manual_{alert['id']}_{i}")
+
+            if manual_mode:
+                st.info("💡 **Manual Mode Active:** Resolution handed to human expert.")
+                if st.button("✅ Confirm Manual Resolution", key=f"war_done_{alert['id']}_{i}", type="primary", use_container_width=True):
+                    st.session_state.history_log.append({
+                        "id": alert["id"],
+                        "issue": alert["issue"],
+                        "risk": "High",
+                        "action": "Manual Override: Resolved by User",
+                        "time": datetime.now().strftime("[%H:%M:%S]")
+                    })
+                    st.session_state.metrics["High"] += 1
+                    st.session_state.metrics["Affected_Merchants"].add(alert["merchant_id"])
+                    st.session_state.war_room_queue.pop(i)
+                    st.rerun()
+            else:
+                approve = st.checkbox("I approve the agent's proposed critical fix", key=f"war_approve_{alert['id']}_{i}")
+                if st.button("Approve & Execute", key=f"war_exec_{alert['id']}_{i}", disabled=not approve, type="primary", use_container_width=True):
+                    st.session_state.metrics["High"] += 1
+                    st.session_state.metrics["Affected_Merchants"].add(alert["merchant_id"])
+                    st.session_state.history_log.append({
+                        "id": alert["id"],
+                        "issue": alert["issue"],
+                        "risk": "High",
+                        "action": "Critical Fix (Human Approved)",
+                        "time": datetime.now().strftime("[%H:%M:%S]")
+                    })
+                    st.session_state.war_room_queue.pop(i)
+                    st.balloons()
+                    st.rerun()
+            st.divider()
+
+# =========================================================
+# TAB 4 — SYSTEM AUDIT
 # =========================================================
 with tab_audit:
     st.subheader("System Event Log")
