@@ -155,11 +155,11 @@ with tab_metrics:
     c1, c2, c3, c4 = st.columns(4)
 
     with c1:
-        st.markdown(metric_card("Low Risk", st.session_state.metrics["Low"], "#2ecc71"), unsafe_allow_html=True)
+        st.markdown(metric_card("Low Risk Solved", st.session_state.metrics["Low"], "#2ecc71"), unsafe_allow_html=True)
     with c2:
-        st.markdown(metric_card("Medium Risk", st.session_state.metrics["Medium"], "#f39c12"), unsafe_allow_html=True)
+        st.markdown(metric_card("Medium Risk Solved", st.session_state.metrics["Medium"], "#f39c12"), unsafe_allow_html=True)
     with c3:
-        st.markdown(metric_card("High Risk", st.session_state.metrics["High"], "#e10600"), unsafe_allow_html=True)
+        st.markdown(metric_card("High Risk Solved", st.session_state.metrics["High"], "#e10600"), unsafe_allow_html=True)
     with c4:
         st.markdown(metric_card(
             "Merchants Affected",
