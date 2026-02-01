@@ -10,7 +10,7 @@ from data_gen import generate_live_signals
 st.set_page_config(
     page_title="AEGIS: Migration Guard",
     layout="wide",
-    page_icon="red.svg"
+    page_icon="🛡️"
 )
 
 # =========================================================
@@ -29,7 +29,6 @@ html, body, [class*="css"] {
     padding-bottom: 2rem;
 }
 
-/* Headings */
 h1, h2, h3, h4 {
     color: #f5f5f5;
     font-weight: 600;
@@ -79,7 +78,6 @@ h1, h2, h3, h4 {
     border-left: 6px solid #e10600;
 }
 
-/* Divider */
 hr {
     border-color: #1f2430;
 }
@@ -132,29 +130,28 @@ tab_metrics, tab_investigation, tab_audit = st.tabs([
 # =========================================================
 def metric_card(title, value, color):
     return f"""
-    <div style="
-        background: linear-gradient(180deg, #141821, #0f1218);
-        border: 1px solid {color};
-        border-radius: 14px;
-        padding: 22px;
-        text-align: center;
-        box-shadow: 0 0 24px rgba(0,0,0,0.5);
-    ">
-        <div style="color:#999; font-size:0.8rem; letter-spacing:1px;">
-            {title.upper()}
-        </div>
-        <div style="color:{color}; font-size:2.6rem; font-weight:700; margin-top:6px;">
-            {value}
-        </div>
+<div style="
+    background: linear-gradient(180deg, #141821, #0f1218);
+    border: 1px solid {color};
+    border-radius: 14px;
+    padding: 22px;
+    text-align: center;
+    box-shadow: 0 0 24px rgba(0,0,0,0.5);
+">
+    <div style="color:#999; font-size:0.8rem; letter-spacing:1px;">
+        {title.upper()}
     </div>
-    """
+    <div style="color:{color}; font-size:2.6rem; font-weight:700; margin-top:6px;">
+        {value}
+    </div>
+</div>
+"""
 
 # =========================================================
 # TAB 1 — EXECUTIVE SUMMARY
 # =========================================================
 with tab_metrics:
     st.subheader("Platform Health Overview")
-
     c1, c2, c3, c4 = st.columns(4)
 
     with c1:
@@ -176,7 +173,6 @@ with tab_metrics:
 with tab_investigation:
     if st.session_state.ticket_queue:
         current_ticket = st.session_state.ticket_queue[0]
-
         st.info(f"**Active Signal:** Investigating Incident `{current_ticket['id']}`")
 
         left, right = st.columns(2)
@@ -214,7 +210,7 @@ with tab_investigation:
                     result = agent_app.invoke(initial_state)
                     st.session_state.current_result = result
                     st.session_state.current_risk = result.get("risk_level", "Low")
-                    st.session_state.current_confidence = result.get("confidence", 95)
+                    st.session_state.current_confidence = result.get("confidence", 70)
 
         if "current_result" in st.session_state:
             res = st.session_state.current_result
@@ -224,46 +220,68 @@ with tab_investigation:
             st.divider()
             st.markdown(f"**Agent Reasoning:** {res['messages'][-2].content}")
             st.metric("Reasoning Confidence", f"{conf}%")
+            st.progress(conf / 100)
 
+            # --- PATH A: AUTONOMOUS RESOLUTION (LOW / MEDIUM) ---
             if risk in ["Low", "Medium"]:
-                st.write(f" **Auto-Action:** Resolving `{current_ticket['id']}`…")
+                st.write(f"⚙️ **Auto-Action:** System identified {risk} risk. Implementing self-healing resolution...")
                 time.sleep(2)
-
+                
                 st.session_state.metrics[risk] += 1
                 st.session_state.metrics["Affected_Merchants"].add(current_ticket["merchant_id"])
                 st.session_state.history_log.append({
                     "id": current_ticket["id"],
                     "issue": current_ticket["issue"],
                     "risk": risk,
-                    "action": "Automated Remediation",
+                    "action": f"Autonomous {risk}-Risk Mitigation Applied",
                     "time": datetime.now().strftime("[%H:%M:%S]")
                 })
-
+                
                 st.session_state.ticket_queue.pop(0)
                 del st.session_state.current_result
                 st.rerun()
 
+            # --- PATH B: HUMAN-IN-THE-LOOP (HIGH RISK ONLY) ---
             else:
-                st.error("🛑 HIGH-LEVEL RISK DETECTED")
-                st.markdown(res["messages"][-1].content)
-                st.warning("Manual approval required for potential financial or data impact.")
+                st.error("🛑 CRITICAL RISK DETECTED")
+                st.warning("Ethics Protocol: Manual confirmation required for high-impact action.")
+                
+                st.markdown("### 🛠️ High-Risk Intervention")
+                manual_col, agent_col = st.columns(2)
+                
+                with manual_col:
+                    manual_mode = st.checkbox("🚫 No, I'll solve this on my own", key=f"manual_{current_ticket['id']}")
 
-                if st.button("⚠️ Approve & Execute Critical Fix", use_container_width=True):
-                    st.session_state.metrics["High"] += 1
-                    st.session_state.metrics["Affected_Merchants"].add(current_ticket["merchant_id"])
-                    st.session_state.history_log.append({
-                        "id": current_ticket["id"],
-                        "issue": current_ticket["issue"],
-                        "risk": "High",
-                        "action": "Engineer Escalated / Approved",
-                        "time": datetime.now().strftime("[%H:%M:%S]")
-                    })
-                    st.session_state.ticket_queue.pop(0)
-                    del st.session_state.current_result
-                    st.rerun()
-
+                if manual_mode:
+                    st.info("💡 **Manual Mode Active:** Agent paused for human intervention.")
+                    if st.button("✅ I have resolved this manually", type="primary", use_container_width=True):
+                        st.session_state.history_log.append({
+                            "id": current_ticket["id"],
+                            "issue": current_ticket["issue"],
+                            "risk": "High",
+                            "action": "Manual Override: Resolved by User",
+                            "time": datetime.now().strftime("[%H:%M:%S]")
+                        })
+                        st.session_state.ticket_queue.pop(0)
+                        del st.session_state.current_result
+                        st.rerun()
+                else:
+                    approve = st.checkbox("I approve the agent's proposed critical fix", key=f"approve_{current_ticket['id']}")
+                    if st.button("🚀 Approve & Execute", disabled=not approve, type="primary", use_container_width=True):
+                        st.session_state.metrics["High"] += 1
+                        st.session_state.history_log.append({
+                            "id": current_ticket["id"],
+                            "issue": current_ticket["issue"],
+                            "risk": "High",
+                            "action": "Critical Fix (Human Approved)",
+                            "time": datetime.now().strftime("[%H:%M:%S]")
+                        })
+                        st.session_state.ticket_queue.pop(0)
+                        del st.session_state.current_result
+                        st.balloons()
+                        st.rerun()
     else:
-        st.success("All incidents resolved. AEGIS is in passive monitoring mode.")
+        st.success("All signals clear. Passive monitoring active.")
         if st.button("Restart Simulation"):
             del st.session_state.ticket_queue
             st.rerun()
@@ -294,26 +312,14 @@ with tab_audit:
             margin-bottom:14px;
             box-shadow: inset 0 0 0 1px #1f2430;
         ">
-            <div style="display:flex; justify-content:space-between;">
-                <span style="font-family:monospace; color:#999;">
-                    {item['time']}
-                </span>
-                <span style="
-                    background:{color};
-                    color:black;
-                    padding:3px 10px;
-                    border-radius:999px;
-                    font-size:0.75rem;
-                    font-weight:700;
-                ">
-                    {label}
-                </span>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-family:monospace; color:#999; font-size:0.85rem;">{item['time']}</span>
+                <span style="background:{color}; color:black; padding:2px 10px; border-radius:12px; font-size:0.7rem; font-weight:700;">{label}</span>
             </div>
-
-            <div style="margin-top:12px; display:flex; gap:14px;">
-                <div style="font-size:1.6rem;">{icon}</div>
+            <div style="margin-top:12px; display:flex; gap:14px; align-items:center;">
+                <div style="font-size:1.5rem;">{icon}</div>
                 <div>
-                    <div style="font-weight:600; color:#f5f5f5;">
+                    <div style="font-weight:600; color:#f5f5f5; font-size:1rem;">
                         Ticket {item['id']} — {item['issue']}
                     </div>
                     <div style="font-size:0.85rem; color:#888;">
@@ -323,10 +329,3 @@ with tab_audit:
             </div>
         </div>
         """, unsafe_allow_html=True)
-
-    if st.session_state.history_log:
-        st.divider()
-        st.caption(
-            f"Session Token: AEGIS-2026-FINAL | Last Sync: "
-            f"{datetime.now().strftime('%A, %B %d, %Y')}"
-        )
