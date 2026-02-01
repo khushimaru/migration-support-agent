@@ -39,7 +39,7 @@ h1, h2, h3, h4 {
 .stTabs [data-baseweb="tab"] {
     background-color: #0f1218;
     color: #b5b5b5;
-    border-radius: 10px;
+    border-radius: 0px;
     padding: 10px 18px;
     border: 1px solid #1f2430;
 }
@@ -70,6 +70,7 @@ h1, h2, h3, h4 {
     background-color: #12151b;
     border: 1px solid #1f2430;
     border-radius: 12px;
+    
 }
 
 /* Alerts */
@@ -108,12 +109,13 @@ if "history_log" not in st.session_state:
 # HEADER
 # =========================================================
 st.markdown("""
+<div style="padding: 5px 0px 10px 10px">
 <h1 style="letter-spacing:1px;">
 <span style="color:#e10600;">AEGIS</span> Migration Guard
 </h1>
 <p style="color:#888; margin-top:-10px;">
 Autonomous Support & Self-Healing Infrastructure for SaaS Platforms
-</p>
+</p></div>
 """, unsafe_allow_html=True)
 
 # =========================================================
@@ -180,11 +182,26 @@ with tab_investigation:
         left, right = st.columns(2)
 
         with left:
-            st.markdown("#### [Observe] Incoming Signal")
+            st.markdown(
+                """
+                <div style="padding: 5px 0px 10px 10px;">
+                <h4>Incoming Signal</h4>
+                </div>
+                """,
+            unsafe_allow_html=True
+            )
+    
             st.json(current_ticket)
 
         with right:
-            st.markdown("#### [Reason & Decide]")
+            st.markdown(
+                """
+                <div style="padding: 5px 0px 10px 10px;">
+                    <h4>Reason & Decide</h4>
+                </div>
+                """,
+            unsafe_allow_html=True
+            )
             if st.button("Invoke Agent Reasoning Engine", use_container_width=True):
                 initial_state = {
                     "messages": [("user", current_ticket.get("desc", ""))],
